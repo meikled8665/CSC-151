@@ -1,5 +1,9 @@
 import java.awt.*;
 import java.awt.event.*;
+import java.io.*;
+import java.util.*;
+import java.util.List;
+
 import javax.swing.*;
 import javax.swing.border.*;
 
@@ -21,6 +25,11 @@ public class ConcretePadEstimator extends JFrame {
     private JLabel laborCostLabel;
     private JLabel totalCostLabel;
 
+    private static final String CSV_FILE = "Projects.csv";
+    private static final String CSV_HEADER =
+        "Project Name,Location,Length (ft),Width (ft),Thickness (in),Employees," +
+        "Area (sq ft),Volume (CY+10%),Total Time (hr),Material Cost,Labor Cost,Total Cost";
+
     public ConcretePadEstimator() {
         setTitle("Concrete Pour Cost Estimator");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -34,6 +43,8 @@ public class ConcretePadEstimator extends JFrame {
         Color textLight  = new Color(175, 125, 255);
         Color textDim    = new Color(140, 150, 165);
         Color fieldBg    = new Color(22, 26, 33);
+        Color saveGreen  = new Color(40, 167, 80);
+        Color loadBlue   = new Color(30, 120, 200);
 
         getContentPane().setBackground(bg);
 
@@ -46,8 +57,8 @@ public class ConcretePadEstimator extends JFrame {
         title.setFont(new Font("Arial", Font.BOLD, 18));
         title.setForeground(accent);
         header.add(title);
-        add(header, BorderLayout.NORTH);
 
+        // ===== PROJECT INFO PANEL =====
         JPanel inputPanel2 = createCard(panel, accent, "PROJECT INFO");
         inputPanel2.setLayout(new BoxLayout(inputPanel2, BoxLayout.Y_AXIS));
         projectNameField = createField(fieldBg, textLight);
@@ -56,12 +67,39 @@ public class ConcretePadEstimator extends JFrame {
         inputPanel2.add(Box.createVerticalStrut(6));
         addInputRow(inputPanel2, "Project Name:", projectNameField, textDim, textLight);
         addInputRow(inputPanel2, "Location:",     locationField,    textDim, textLight);
-        inputPanel2.add(Box.createVerticalStrut(14));
+
+        // Save / Load buttons row inside PROJECT INFO
+        JButton saveBtn = new JButton("SAVE PROJECT");
+        styleSmallBtn(saveBtn, saveGreen, bg);
+        saveBtn.addActionListener(e -> saveProject());
+
+        JButton loadBtn = new JButton("LOAD PROJECT");
+        styleSmallBtn(loadBtn, loadBlue, Color.WHITE);
+        loadBtn.addActionListener(e -> loadProject());
+
+        JPanel saveBtnRow = new JPanel(new GridLayout(1, 2, 8, 0));
+        saveBtnRow.setOpaque(false);
+        saveBtnRow.setBorder(new EmptyBorder(6, 14, 12, 14));
+        saveBtnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
+        saveBtnRow.add(saveBtn);
+        saveBtnRow.add(loadBtn);
+        inputPanel2.add(saveBtnRow);
+
+        JPanel projectWrapper = new JPanel(new BorderLayout());
+        projectWrapper.setBackground(bg);
+        projectWrapper.setBorder(new EmptyBorder(6, 16, 6, 16));
+        projectWrapper.add(inputPanel2, BorderLayout.CENTER);
+
+        JPanel topPanel = new JPanel(new BorderLayout());
+        topPanel.setBackground(bg);
+        topPanel.add(header, BorderLayout.NORTH);
+        topPanel.add(projectWrapper, BorderLayout.CENTER);
+        add(topPanel, BorderLayout.NORTH);
 
         // ===== MAIN BODY =====
         JPanel body = new JPanel(new GridLayout(1, 2, 12, 0));
         body.setBackground(bg);
-        body.setBorder(new EmptyBorder(100, 16, 0, 16));
+        body.setBorder(new EmptyBorder(10, 16, 0, 16));
 
         // --- INPUT PANEL ---
         JPanel inputPanel = createCard(panel, accent, "INPUTS");
@@ -115,11 +153,11 @@ public class ConcretePadEstimator extends JFrame {
         totalCostLabel.setFont(new Font("Arial", Font.BOLD, 13));
 
         outputPanel.add(Box.createVerticalStrut(6));
-        addResultRow(outputPanel, "Area:",          areaLabel,      textDim, textLight);
-        addResultRow(outputPanel, "Volume (CY+10%):", volumeCYLabel, textDim, textLight);
-        addResultRow(outputPanel, "Total Time (hr):", timeLabel,     textDim, textLight);
-        addResultRow(outputPanel, "Material Cost:", matCostLabel,   textDim, textLight);
-        addResultRow(outputPanel, "Labor Cost:",    laborCostLabel, textDim, textLight);
+        addResultRow(outputPanel, "Area:",            areaLabel,      textDim, textLight);
+        addResultRow(outputPanel, "Volume (CY+10%):", volumeCYLabel,  textDim, textLight);
+        addResultRow(outputPanel, "Total Time (hr):", timeLabel,      textDim, textLight);
+        addResultRow(outputPanel, "Material Cost:",   matCostLabel,   textDim, textLight);
+        addResultRow(outputPanel, "Labor Cost:",      laborCostLabel, textDim, textLight);
 
         // Divider
         JSeparator sep = new JSeparator();
@@ -173,6 +211,15 @@ public class ConcretePadEstimator extends JFrame {
 
     // ── Helpers ──────────────────────────────────────────────────────────────
 
+    private void styleSmallBtn(JButton btn, Color bg, Color fg) {
+        btn.setFont(new Font("Arial", Font.BOLD, 11));
+        btn.setBackground(bg);
+        btn.setForeground(fg);
+        btn.setFocusPainted(false);
+        btn.setBorder(new EmptyBorder(7, 0, 7, 0));
+        btn.setCursor(new Cursor(Cursor.HAND_CURSOR));
+    }
+
     private JPanel createCard(Color bg, Color accent, String title) {
         JPanel card = new JPanel();
         card.setBackground(bg);
@@ -181,7 +228,6 @@ public class ConcretePadEstimator extends JFrame {
             new EmptyBorder(0, 0, 0, 0)
         ));
 
-        // Section header
         JLabel lbl = new JLabel("  " + title);
         lbl.setFont(new Font("Arial", Font.BOLD, 11));
         lbl.setForeground(accent);
@@ -218,7 +264,7 @@ public class ConcretePadEstimator extends JFrame {
     }
 
     private void addInputRow(JPanel parent, String labelText,
-                            JTextField field, Color labelColor, Color fieldColor) {
+                             JTextField field, Color labelColor, Color fieldColor) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.setBorder(new EmptyBorder(5, 14, 5, 14));
@@ -235,7 +281,7 @@ public class ConcretePadEstimator extends JFrame {
     }
 
     private void addResultRow(JPanel parent, String labelText,
-                            JLabel valueLabel, Color labelColor, Color valueColor) {
+                              JLabel valueLabel, Color labelColor, Color valueColor) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.setBorder(new EmptyBorder(5, 14, 5, 14));
@@ -251,7 +297,7 @@ public class ConcretePadEstimator extends JFrame {
         parent.add(row);
     }
 
-    // ── Core logic (your formulas) ────────────────────────────────────────────
+    // ── Core logic ────────────────────────────────────────────────────────────
 
     private void calculate() {
         try {
@@ -265,24 +311,18 @@ public class ConcretePadEstimator extends JFrame {
                 return;
             }
 
-            // Size calculations
             double area   = length * width;
             double vol    = area * (thickness / 12.0);
+            double volCY  = (vol * 1.10) / 27.0;
 
-            // Volume in cubic yards + 10% extra
-            double volCY  = (vol + 0.10 * vol) / 27.0;
-
-            // Time calculations
             double emplTimeEst = (volCY * 3.0) / employees;
             double pourTime    = (volCY * 5.0) / 60.0;
             double totTime     = emplTimeEst + pourTime + 1.0;
 
-            // Cost calculations
             double matCost   = volCY * 125.0;
             double laborCost = totTime * employees * 21.0;
             double total     = matCost + laborCost;
 
-            // Update result labels
             areaLabel.setText(String.format("%.2f sq ft", area));
             volumeCYLabel.setText(String.format("%.3f CY", volCY));
             timeLabel.setText(String.format("%.2f hrs", totTime));
@@ -295,7 +335,153 @@ public class ConcretePadEstimator extends JFrame {
         }
     }
 
+    // ── CSV helpers ──────────────────────────────────────────────────────────
+
+    /** Creates Projects.csv with the header row if it does not already exist. */
+    private void ensureCSVExists() throws IOException {
+        File file = new File(CSV_FILE);
+        if (!file.exists()) {
+            try (PrintWriter pw = new PrintWriter(new FileWriter(file))) {
+                pw.println(CSV_HEADER);
+        }
+    }
+
+    // ── CSV Save ─────────────────────────────────────────────────────────────
+
+    private void saveProject() {
+        String projectName = projectNameField.getText().trim();
+        String location    = locationField.getText().trim();
+        String length      = lengthField.getText().trim();
+        String width       = widthField.getText().trim();
+        String thickness   = thicknessField.getText().trim();
+        String employees   = employeesField.getText().trim();
+
+        if (projectName.isEmpty() || length.isEmpty() || width.isEmpty()
+                || thickness.isEmpty() || employees.isEmpty()) {
+            showError("Please fill in all inputs and calculate before saving.");
+            return;
+        }
+
+        if (totalCostLabel.getText().equals("—")) {
+            showError("Please calculate results before saving.");
+            return;
+        }
+
+        try {
+            ensureCSVExists();                          // create file + header if needed
+            File csv = new File(CSV_FILE);
+            try (PrintWriter pw = new PrintWriter(new FileWriter(csv, true))) {
+                pw.printf("\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                    projectName, location,
+                    length, width, thickness, employees,
+                    areaLabel.getText(),
+                    volumeCYLabel.getText(),
+                    timeLabel.getText(),
+                    matCostLabel.getText(),
+                    laborCostLabel.getText(),
+                    totalCostLabel.getText()
+                );
+            }
+            JOptionPane.showMessageDialog(this,
+                "Project saved to " + csv.getAbsolutePath(),
+                "Saved", JOptionPane.INFORMATION_MESSAGE);
+
+        } catch (IOException ex) {
+            showError("Could not write to Projects.csv:\n" + ex.getMessage());
+        }
+    }
+
+    // ── CSV Load ─────────────────────────────────────────────────────────────
+
+    private void loadProject() {
+        try {
+            ensureCSVExists();                          // create file + header if missing
+        } catch (IOException ex) {
+            showError("Could not create Projects.csv:\n" + ex.getMessage());
+            return;
+        }
+
+        File csv = new File(CSV_FILE);
+
+        List<String[]> projects = new ArrayList<>();
+        List<String>   labels   = new ArrayList<>();
+
+        try (BufferedReader br = new BufferedReader(new FileReader(csv))) {
+            String line = br.readLine(); // skip header
+            while ((line = br.readLine()) != null) {
+                if (line.trim().isEmpty()) continue;
+                String[] cols = parseCSVLine(line);
+                if (cols.length >= 12) {
+                    projects.add(cols);
+                    // Display: "Project Name — Location"
+                    labels.add(cols[0] + (cols[1].isEmpty() ? "" : "  —  " + cols[1]));
+                }
+            }
+        } catch (IOException ex) {
+            showError("Could not read Projects.csv:\n" + ex.getMessage());
+            return;
+        }
+
+        if (projects.isEmpty()) {
+            showError("No saved projects found in Projects.csv.");
+            return;
+        }
+
+        String chosen = (String) JOptionPane.showInputDialog(
+            this,
+            "Select a project to load:",
+            "Load Project",
+            JOptionPane.PLAIN_MESSAGE,
+            null,
+            labels.toArray(),
+            labels.get(0)
+        );
+
+        if (chosen == null) return; // cancelled
+
+        int idx = labels.indexOf(chosen);
+        String[] row = projects.get(idx);
+
+        // Populate inputs
+        projectNameField.setText(row[0]);
+        locationField.setText(row[1]);
+        lengthField.setText(row[2]);
+        widthField.setText(row[3]);
+        thicknessField.setText(row[4]);
+        employeesField.setText(row[5]);
+
+        // Populate results
+        areaLabel.setText(row[6]);
+        volumeCYLabel.setText(row[7]);
+        timeLabel.setText(row[8]);
+        matCostLabel.setText(row[9]);
+        laborCostLabel.setText(row[10]);
+        totalCostLabel.setText(row[11]);
+    }
+
+    /** Minimal CSV parser that handles double-quoted fields. */
+    private String[] parseCSVLine(String line) {
+        List<String> fields = new ArrayList<>();
+        StringBuilder sb = new StringBuilder();
+        boolean inQuotes = false;
+        for (int i = 0; i < line.length(); i++) {
+            char c = line.charAt(i);
+            if (c == '"') {
+                inQuotes = !inQuotes;
+            } else if (c == ',' && !inQuotes) {
+                fields.add(sb.toString());
+                sb.setLength(0);
+            } else {
+                sb.append(c);
+            }
+        }
+        fields.add(sb.toString());
+        return fields.toArray(new String[0]);
+    }
+
     private void resetFields() {
+        projectNameField.setText("");
+        locationField.setText("");
         lengthField.setText("");
         widthField.setText("");
         thicknessField.setText("");
@@ -309,7 +495,7 @@ public class ConcretePadEstimator extends JFrame {
     }
 
     private void showError(String msg) {
-        JOptionPane.showMessageDialog(this, msg, "Input Error", JOptionPane.ERROR_MESSAGE);
+        JOptionPane.showMessageDialog(this, msg, "Error", JOptionPane.ERROR_MESSAGE);
     }
 
     // ── Entry point ───────────────────────────────────────────────────────────
