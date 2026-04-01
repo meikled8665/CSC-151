@@ -3,7 +3,6 @@ import java.awt.event.*;
 import java.io.*;
 import java.util.*;
 import java.util.List;
-
 import javax.swing.*;
 import javax.swing.border.*;
 
@@ -24,11 +23,37 @@ public class ConcretePadEstimator extends JFrame {
     private JLabel matCostLabel;
     private JLabel laborCostLabel;
     private JLabel totalCostLabel;
+    private JLabel discountBadgeLabel;   // e.g. "Large Volume  –15%"
+    private JLabel discountedTotalLabel; // final price after discount
+    private JLabel reinforcementLabel;
 
     private static final String CSV_FILE = "Projects.csv";
     private static final String CSV_HEADER =
-        "Project Name,Location,Length (ft),Width (ft),Thickness (in),Employees," +
-        "Area (sq ft),Volume (CY+10%),Total Time (hr),Material Cost,Labor Cost,Total Cost";
+        "Project Name,Location,Length (ft),Width (ft),Thickness (in),Employees,";
+
+    // ── Discount rules (name, threshold, unit, discountPct) ──────────────────
+    // Evaluated in order; only the single highest-pct match is applied.
+    private static final Object[][] DISCOUNT_RULES = {
+        // { display name,  threshold,  "cy"/"sqft"/"emp"/"in",  pct }
+        { "Large Volume (≥50 CY)",     50.0,  "cy",    15.0 },
+        { "Large Area (≥2000 sq ft)", 2000.0, "sqft",  10.0 },
+        { "Medium Volume (≥20 CY)",    20.0,  "cy",     8.0 },
+        { "Thick Slab (≥8 in)",         8.0,  "in",     7.0 },
+        { "Big Crew (≥6 employees)",    6.0,  "emp",    5.0 },
+    };
+
+    // ── Color palette (shared across the whole app) ───────────────────────────
+    private static final Color BG         = new Color(28, 32, 40);
+    private static final Color PANEL      = new Color(38, 43, 54);
+    private static final Color ACCENT     = new Color(224,142,22);
+    private static final Color TEXT_LIGHT = new Color(232, 158, 44);
+    private static final Color TEXT_DIM   = new Color(209, 126, 0);
+    private static final Color FIELD_BG   = new Color(22, 26, 33);
+    private static final Color SAVE_GREEN = new Color(40, 167, 80);
+    private static final Color LOAD_BLUE  = new Color(30, 120, 200);
+    private static final Color DEL_RED    = new Color(190, 50, 50);
+    private static final Color BORDER_COL = new Color(55, 62, 75);
+    private static final Color DISC_GOLD  = new Color(220, 170, 40);   // discount highlight
 
     public ConcretePadEstimator() {
         setTitle("Concrete Pour Cost Estimator");
@@ -36,91 +61,86 @@ public class ConcretePadEstimator extends JFrame {
         setLayout(new BorderLayout(200, 100));
         setResizable(false);
 
-        // ---- Color palette ----
-        Color bg         = new Color(28, 32, 40);
-        Color panel      = new Color(38, 43, 54);
-        Color accent     = new Color(120, 60, 210);
-        Color textLight  = new Color(175, 125, 255);
-        Color textDim    = new Color(140, 150, 165);
-        Color fieldBg    = new Color(22, 26, 33);
-        Color saveGreen  = new Color(40, 167, 80);
-        Color loadBlue   = new Color(30, 120, 200);
-
-        getContentPane().setBackground(bg);
+        getContentPane().setBackground(BG);
 
         // ===== HEADER =====
         JPanel header = new JPanel();
-        header.setBackground(bg);
+        header.setBackground(BG);
         header.setBorder(new EmptyBorder(18, 20, 8, 20));
 
         JLabel title = new JLabel("CONCRETE COST ESTIMATOR");
         title.setFont(new Font("Arial", Font.BOLD, 18));
-        title.setForeground(accent);
+        title.setForeground(ACCENT);
         header.add(title);
 
         // ===== PROJECT INFO PANEL =====
-        JPanel inputPanel2 = createCard(panel, accent, "PROJECT INFO");
+        JPanel inputPanel2 = createCard(PANEL, ACCENT, "PROJECT INFO");
         inputPanel2.setLayout(new BoxLayout(inputPanel2, BoxLayout.Y_AXIS));
-        projectNameField = createField(fieldBg, textLight);
-        locationField = createField(fieldBg, textLight);
+        projectNameField = createField(FIELD_BG, TEXT_LIGHT);
+        locationField = createField(FIELD_BG, TEXT_LIGHT);
 
         inputPanel2.add(Box.createVerticalStrut(6));
-        addInputRow(inputPanel2, "Project Name:", projectNameField, textDim, textLight);
-        addInputRow(inputPanel2, "Location:",     locationField,    textDim, textLight);
+        addInputRow(inputPanel2, "Project Name:", projectNameField, TEXT_DIM, TEXT_LIGHT);
+        addInputRow(inputPanel2, "Location:",     locationField,    TEXT_DIM, TEXT_LIGHT);
 
-        // Save / Load buttons row inside PROJECT INFO
+        // Save / Load / Delete buttons row inside PROJECT INFO
         JButton saveBtn = new JButton("SAVE PROJECT");
-        styleSmallBtn(saveBtn, saveGreen, bg);
+        styleSmallBtn(saveBtn, SAVE_GREEN, BG);
         saveBtn.addActionListener(e -> saveProject());
 
         JButton loadBtn = new JButton("LOAD PROJECT");
-        styleSmallBtn(loadBtn, loadBlue, Color.WHITE);
+        styleSmallBtn(loadBtn, LOAD_BLUE, Color.WHITE);
         loadBtn.addActionListener(e -> loadProject());
 
-        JPanel saveBtnRow = new JPanel(new GridLayout(1, 2, 8, 0));
+        JButton deleteBtn = new JButton("DELETE PROJECT");
+        styleSmallBtn(deleteBtn, DEL_RED, Color.WHITE);
+        deleteBtn.addActionListener(e -> deleteProject());
+
+        JPanel saveBtnRow = new JPanel(new GridLayout(1, 3, 8, 0));
         saveBtnRow.setOpaque(false);
         saveBtnRow.setBorder(new EmptyBorder(6, 14, 12, 14));
         saveBtnRow.setMaximumSize(new Dimension(Integer.MAX_VALUE, 44));
         saveBtnRow.add(saveBtn);
         saveBtnRow.add(loadBtn);
+        saveBtnRow.add(deleteBtn);
         inputPanel2.add(saveBtnRow);
 
         JPanel projectWrapper = new JPanel(new BorderLayout());
-        projectWrapper.setBackground(bg);
+        projectWrapper.setBackground(BG);
         projectWrapper.setBorder(new EmptyBorder(6, 16, 6, 16));
         projectWrapper.add(inputPanel2, BorderLayout.CENTER);
 
         JPanel topPanel = new JPanel(new BorderLayout());
-        topPanel.setBackground(bg);
+        topPanel.setBackground(BG);
         topPanel.add(header, BorderLayout.NORTH);
         topPanel.add(projectWrapper, BorderLayout.CENTER);
         add(topPanel, BorderLayout.NORTH);
 
         // ===== MAIN BODY =====
         JPanel body = new JPanel(new GridLayout(1, 2, 12, 0));
-        body.setBackground(bg);
+        body.setBackground(BG);
         body.setBorder(new EmptyBorder(10, 16, 0, 16));
 
         // --- INPUT PANEL ---
-        JPanel inputPanel = createCard(panel, accent, "INPUTS");
+        JPanel inputPanel = createCard(PANEL, ACCENT, "INPUTS");
         inputPanel.setLayout(new BoxLayout(inputPanel, BoxLayout.Y_AXIS));
 
-        lengthField    = createField(fieldBg, textLight);
-        widthField     = createField(fieldBg, textLight);
-        thicknessField = createField(fieldBg, textLight);
-        employeesField = createField(fieldBg, textLight);
+        lengthField    = createField(FIELD_BG, TEXT_LIGHT);
+        widthField     = createField(FIELD_BG, TEXT_LIGHT);
+        thicknessField = createField(FIELD_BG, TEXT_LIGHT);
+        employeesField = createField(FIELD_BG, TEXT_LIGHT);
 
         inputPanel.add(Box.createVerticalStrut(6));
-        addInputRow(inputPanel, "Length (ft):",    lengthField,    textDim, textLight);
-        addInputRow(inputPanel, "Width (ft):",     widthField,     textDim, textLight);
-        addInputRow(inputPanel, "Thickness (in):", thicknessField, textDim, textLight);
-        addInputRow(inputPanel, "# of Employees:", employeesField, textDim, textLight);
+        addInputRow(inputPanel, "Length (ft):",    lengthField,    TEXT_DIM, TEXT_LIGHT);
+        addInputRow(inputPanel, "Width (ft):",     widthField,     TEXT_DIM, TEXT_LIGHT);
+        addInputRow(inputPanel, "Thickness (in):", thicknessField, TEXT_DIM, TEXT_LIGHT);
+        addInputRow(inputPanel, "# of Employees:", employeesField, TEXT_DIM, TEXT_LIGHT);
         inputPanel.add(Box.createVerticalStrut(14));
 
         // Calculate button
         JButton calcBtn = new JButton("CALCULATE");
         calcBtn.setFont(new Font("Arial", Font.BOLD, 13));
-        calcBtn.setBackground(accent);
+        calcBtn.setBackground(ACCENT);
         calcBtn.setForeground(new Color(28, 32, 40));
         calcBtn.setFocusPainted(false);
         calcBtn.setBorder(new EmptyBorder(10, 0, 10, 0));
@@ -129,8 +149,8 @@ public class ConcretePadEstimator extends JFrame {
         calcBtn.setMaximumSize(new Dimension(Integer.MAX_VALUE, 40));
 
         calcBtn.addMouseListener(new MouseAdapter() {
-            public void mouseEntered(MouseEvent e) { calcBtn.setBackground(accent.brighter()); }
-            public void mouseExited(MouseEvent e)  { calcBtn.setBackground(accent); }
+            public void mouseEntered(MouseEvent e) { calcBtn.setBackground(ACCENT.brighter()); }
+            public void mouseExited(MouseEvent e)  { calcBtn.setBackground(ACCENT); }
         });
         calcBtn.addActionListener(e -> calculate());
 
@@ -141,23 +161,26 @@ public class ConcretePadEstimator extends JFrame {
         inputPanel.add(btnWrapper);
 
         // --- OUTPUT PANEL ---
-        JPanel outputPanel = createCard(panel, accent, "RESULTS");
+        JPanel outputPanel = createCard(PANEL, ACCENT, "RESULTS");
         outputPanel.setLayout(new BoxLayout(outputPanel, BoxLayout.Y_AXIS));
 
-        areaLabel     = createResultLabel(textDim);
-        volumeCYLabel = createResultLabel(textDim);
-        timeLabel     = createResultLabel(textDim);
-        matCostLabel  = createResultLabel(textDim);
-        laborCostLabel= createResultLabel(textDim);
-        totalCostLabel= createResultLabel(accent);
+        areaLabel     = createResultLabel(TEXT_DIM);
+        volumeCYLabel = createResultLabel(TEXT_DIM);
+        timeLabel     = createResultLabel(TEXT_DIM);
+        matCostLabel  = createResultLabel(TEXT_DIM);
+        laborCostLabel= createResultLabel(TEXT_DIM);
+        reinforcementLabel = createResultLabel(TEXT_DIM);
+        totalCostLabel= createResultLabel(ACCENT);
         totalCostLabel.setFont(new Font("Arial", Font.BOLD, 13));
 
         outputPanel.add(Box.createVerticalStrut(6));
-        addResultRow(outputPanel, "Area:",            areaLabel,      textDim, textLight);
-        addResultRow(outputPanel, "Volume (CY+10%):", volumeCYLabel,  textDim, textLight);
-        addResultRow(outputPanel, "Total Time (hr):", timeLabel,      textDim, textLight);
-        addResultRow(outputPanel, "Material Cost:",   matCostLabel,   textDim, textLight);
-        addResultRow(outputPanel, "Labor Cost:",      laborCostLabel, textDim, textLight);
+        addResultRow(outputPanel, "Area:",            areaLabel,      TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Volume (CY+10%):", volumeCYLabel,  TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Total Time (hr):", timeLabel,      TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Material Cost:",   matCostLabel,   TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Labor Cost:",      laborCostLabel, TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Reinforcement:",      reinforcementLabel, TEXT_DIM, TEXT_LIGHT);
+
 
         // Divider
         JSeparator sep = new JSeparator();
@@ -170,14 +193,35 @@ public class ConcretePadEstimator extends JFrame {
         sepWrap.add(sep);
         outputPanel.add(sepWrap);
 
-        addResultRow(outputPanel, "TOTAL COST:", totalCostLabel, accent, accent);
+        addResultRow(outputPanel, "TOTAL COST:", totalCostLabel, ACCENT, ACCENT);
+
+        // ── Discount section ─────────────────────────────────────────────────
+        JSeparator sep2 = new JSeparator();
+        sep2.setForeground(new Color(60, 68, 82));
+        sep2.setBackground(new Color(60, 68, 82));
+        sep2.setMaximumSize(new Dimension(Integer.MAX_VALUE, 1));
+        JPanel sepWrap2 = new JPanel(new BorderLayout());
+        sepWrap2.setOpaque(false);
+        sepWrap2.setBorder(new EmptyBorder(4, 14, 4, 14));
+        sepWrap2.add(sep2);
+        outputPanel.add(sepWrap2);
+
+        discountBadgeLabel   = createResultLabel(DISC_GOLD);
+        discountBadgeLabel.setFont(new Font("Arial", Font.BOLD, 11));
+        discountedTotalLabel = createResultLabel(DISC_GOLD);
+        discountedTotalLabel.setFont(new Font("Arial", Font.BOLD, 14));
+
+        addResultRow(outputPanel, "Discount:",       discountBadgeLabel,   TEXT_DIM,  DISC_GOLD);
+        addResultRow(outputPanel, "AFTER DISCOUNT:", discountedTotalLabel, DISC_GOLD, DISC_GOLD);
+        // ─────────────────────────────────────────────────────────────────────
+
         outputPanel.add(Box.createVerticalGlue());
 
         // Reset button
         JButton resetBtn = new JButton("RESET");
         resetBtn.setFont(new Font("Arial", Font.PLAIN, 11));
-        resetBtn.setBackground(fieldBg);
-        resetBtn.setForeground(textDim);
+        resetBtn.setBackground(FIELD_BG);
+        resetBtn.setForeground(TEXT_DIM);
         resetBtn.setFocusPainted(false);
         resetBtn.setBorder(new EmptyBorder(7, 0, 7, 0));
         resetBtn.setCursor(new Cursor(Cursor.HAND_CURSOR));
@@ -196,17 +240,24 @@ public class ConcretePadEstimator extends JFrame {
 
         // ===== FOOTER =====
         JPanel footer = new JPanel();
-        footer.setBackground(bg);
+        footer.setBackground(BG);
         footer.setBorder(new EmptyBorder(3, 0, 8, 0));
-        JLabel note = new JLabel("Material: $125/CY  ·  Labor: $21/hr/employee  ·  +10% volume buffer");
+        JLabel note = new JLabel("Material: $125/CY  ·  Labor: $21/hr/employee  ·  +10% volume buffer  ·  Auto-discount: best qualifying rule applied");
         note.setFont(new Font("Arial", Font.PLAIN, 10));
-        note.setForeground(textDim);
+        note.setForeground(TEXT_DIM);
         footer.add(note);
         add(footer, BorderLayout.SOUTH);
 
         pack();
         setMinimumSize(new Dimension(600, 400));
         setLocationRelativeTo(null);
+
+        // ── Create CSV with presets immediately on startup ────────────────────
+        try {
+            ensureCSVExists();
+        } catch (IOException ex) {
+            showError("Could not initialize Projects.csv:\n" + ex.getMessage());
+        }
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────────
@@ -224,7 +275,7 @@ public class ConcretePadEstimator extends JFrame {
         JPanel card = new JPanel();
         card.setBackground(bg);
         card.setBorder(BorderFactory.createCompoundBorder(
-            new LineBorder(new Color(55, 62, 75), 1, true),
+            new LineBorder(BORDER_COL, 1, true),
             new EmptyBorder(0, 0, 0, 0)
         ));
 
@@ -264,7 +315,7 @@ public class ConcretePadEstimator extends JFrame {
     }
 
     private void addInputRow(JPanel parent, String labelText,
-                             JTextField field, Color labelColor, Color fieldColor) {
+                            JTextField field, Color labelColor, Color fieldColor) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.setBorder(new EmptyBorder(5, 14, 5, 14));
@@ -281,7 +332,7 @@ public class ConcretePadEstimator extends JFrame {
     }
 
     private void addResultRow(JPanel parent, String labelText,
-                              JLabel valueLabel, Color labelColor, Color valueColor) {
+                            JLabel valueLabel, Color labelColor, Color valueColor) {
         JPanel row = new JPanel(new BorderLayout(10, 0));
         row.setOpaque(false);
         row.setBorder(new EmptyBorder(5, 14, 5, 14));
@@ -295,6 +346,147 @@ public class ConcretePadEstimator extends JFrame {
         row.add(lbl, BorderLayout.WEST);
         row.add(valueLabel, BorderLayout.CENTER);
         parent.add(row);
+    }
+
+    // ── Themed dialog helpers ────────────────────────────────────────────────
+
+    /**
+     * Show a themed modal dialog with a message and optional title.
+     * type: "info", "error", "confirm"
+     * Returns true if the user clicked OK/Yes.
+     */
+    private boolean showThemedDialog(String message, String title, String type) {
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(BG);
+        dialog.setResizable(false);
+
+        // Icon area
+        String iconText;
+        Color  iconColor;
+        switch (type) {
+            case "error":   iconText = "✕"; iconColor = DEL_RED;    break;
+            case "confirm": iconText = "?"; iconColor = ACCENT;     break;
+            default:        iconText = "✓"; iconColor = SAVE_GREEN; break;
+        }
+
+        JLabel icon = new JLabel(iconText, SwingConstants.CENTER);
+        icon.setFont(new Font("Arial", Font.BOLD, 22));
+        icon.setForeground(iconColor);
+        icon.setBorder(new EmptyBorder(18, 24, 0, 16));
+
+        JLabel msg = new JLabel("<html><body style='width:220px'>" +
+                                message.replace("\n", "<br>") + "</body></html>");
+        msg.setForeground(TEXT_LIGHT);
+        msg.setFont(new Font("Arial", Font.PLAIN, 13));
+        msg.setBorder(new EmptyBorder(18, 8, 18, 24));
+
+        JPanel top = new JPanel(new BorderLayout());
+        top.setBackground(BG);
+        top.add(icon, BorderLayout.WEST);
+        top.add(msg,  BorderLayout.CENTER);
+        dialog.add(top, BorderLayout.CENTER);
+
+        // Buttons
+        final boolean[] result = {false};
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        btnRow.setBackground(new Color(38, 43, 54));
+        btnRow.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER_COL));
+
+        if ("confirm".equals(type)) {
+            JButton yes = themedDialogBtn("YES", ACCENT, BG);
+            JButton no  = themedDialogBtn("NO",  FIELD_BG, TEXT_DIM);
+            yes.addActionListener(e -> { result[0] = true;  dialog.dispose(); });
+            no .addActionListener(e -> { result[0] = false; dialog.dispose(); });
+            btnRow.add(no);
+            btnRow.add(yes);
+        } else {
+            JButton ok = themedDialogBtn("OK", ACCENT, BG);
+            ok.addActionListener(e -> { result[0] = true; dialog.dispose(); });
+            btnRow.add(ok);
+        }
+
+        dialog.add(btnRow, BorderLayout.SOUTH);
+        dialog.pack();
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+        return result[0];
+    }
+
+    private JButton themedDialogBtn(String text, Color bg, Color fg) {
+        JButton b = new JButton(text);
+        b.setFont(new Font("Arial", Font.BOLD, 11));
+        b.setBackground(bg);
+        b.setForeground(fg);
+        b.setFocusPainted(false);
+        b.setBorder(new EmptyBorder(7, 18, 7, 18));
+        b.setCursor(new Cursor(Cursor.HAND_CURSOR));
+        return b;
+    }
+
+    /**
+     * Show a themed list-selection dialog. Returns the selected index, or -1.
+     */
+    private int showThemedListDialog(String message, String title,
+                                    String[] items, Color actionColor, String actionLabel) {
+        JDialog dialog = new JDialog(this, title, true);
+        dialog.setLayout(new BorderLayout());
+        dialog.getContentPane().setBackground(BG);
+        dialog.setResizable(false);
+
+        JLabel msg = new JLabel(message);
+        msg.setForeground(TEXT_DIM);
+        msg.setFont(new Font("Arial", Font.PLAIN, 12));
+        msg.setBorder(new EmptyBorder(14, 16, 8, 16));
+        dialog.add(msg, BorderLayout.NORTH);
+
+        // List
+        DefaultListModel<String> model = new DefaultListModel<>();
+        for (String item : items) model.addElement(item);
+        JList<String> list = new JList<>(model);
+        list.setBackground(FIELD_BG);
+        list.setForeground(TEXT_LIGHT);
+        list.setSelectionBackground(ACCENT);
+        list.setSelectionForeground(BG);
+        list.setFont(new Font("Arial", Font.PLAIN, 13));
+        list.setBorder(new EmptyBorder(4, 6, 4, 6));
+        list.setSelectedIndex(0);
+
+        JScrollPane scroll = new JScrollPane(list);
+        scroll.setBackground(FIELD_BG);
+        scroll.setBorder(BorderFactory.createCompoundBorder(
+            new EmptyBorder(0, 16, 10, 16),
+            new LineBorder(BORDER_COL, 1)
+        ));
+        scroll.getViewport().setBackground(FIELD_BG);
+        dialog.add(scroll, BorderLayout.CENTER);
+
+        final int[] result = {-1};
+        JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.RIGHT, 10, 10));
+        btnRow.setBackground(new Color(38, 43, 54));
+        btnRow.setBorder(BorderFactory.createMatteBorder(1, 0, 0, 0, BORDER_COL));
+
+        JButton cancel = themedDialogBtn("CANCEL", FIELD_BG, TEXT_DIM);
+        JButton action = themedDialogBtn(actionLabel, actionColor, Color.WHITE);
+
+        cancel.addActionListener(e -> dialog.dispose());
+        action.addActionListener(e -> {
+            result[0] = list.getSelectedIndex();
+            dialog.dispose();
+        });
+
+        btnRow.add(cancel);
+        btnRow.add(action);
+        dialog.add(btnRow, BorderLayout.SOUTH);
+
+        dialog.setSize(380, 280);
+        dialog.setLocationRelativeTo(this);
+        dialog.setVisible(true);
+        return result[0];
+    }
+
+    private void showError(String msg) {
+        showThemedDialog(msg, "Error", "error");
     }
 
     // ── Core logic ────────────────────────────────────────────────────────────
@@ -315,13 +507,19 @@ public class ConcretePadEstimator extends JFrame {
             double vol    = area * (thickness / 12.0);
             double volCY  = (vol * 1.10) / 27.0;
 
+            double rebar         = 1.30 * volCY;
+            double mesh          = 0.20 * volCY;
+            double reinforcement = rebar + mesh;
+
+
+            double leveling    = 2 * area;
             double emplTimeEst = (volCY * 3.0) / employees;
             double pourTime    = (volCY * 5.0) / 60.0;
             double totTime     = emplTimeEst + pourTime + 1.0;
 
-            double matCost   = volCY * 125.0;
+            double matCost   = volCY * 130.0;
             double laborCost = totTime * employees * 21.0;
-            double total     = matCost + laborCost;
+            double total     = matCost + laborCost + reinforcement+ leveling;
 
             areaLabel.setText(String.format("%.2f sq ft", area));
             volumeCYLabel.setText(String.format("%.3f CY", volCY));
@@ -330,20 +528,148 @@ public class ConcretePadEstimator extends JFrame {
             laborCostLabel.setText(String.format("$%.2f", laborCost));
             totalCostLabel.setText(String.format("$%.2f", total));
 
+            // ── Evaluate discount rules; pick highest matching pct ────────────
+            String bestName = null;
+            double bestPct  = 0.0;
+
+            for (Object[] rule : DISCOUNT_RULES) {
+                String ruleName  = (String) rule[0];
+                double threshold = (Double) rule[1];
+                String unit      = (String) rule[2];
+                double pct       = (Double) rule[3];
+
+                double value;
+                switch (unit) {
+                    case "cy":    value = volCY;     break;
+                    case "sqft":  value = area;      break;
+                    case "emp":   value = employees; break;
+                    case "in":    value = thickness; break;
+                    default:      value = 0;         break;
+                }
+
+                if (value >= threshold && pct > bestPct) {
+                    bestPct  = pct;
+                    bestName = ruleName;
+                }
+            }
+
+            if (bestName != null) {
+                double savings        = total * (bestPct / 100.0);
+                double discountedTotal = total - savings;
+                discountBadgeLabel.setText(
+                    String.format("%s  (–%.0f%%)  saves $%.2f", bestName, bestPct, savings));
+                discountedTotalLabel.setText(String.format("$%.2f", discountedTotal));
+            } else {
+                discountBadgeLabel.setText("No discount applies");
+                discountedTotalLabel.setText("—");
+            }
+            // ─────────────────────────────────────────────────────────────────
+
         } catch (NumberFormatException ex) {
             showError("Please enter valid numbers in all fields.");
         }
     }
 
+    /**
+     * Returns a two-element array: [discountLabel, discountedTotal].
+     * Used when saving so the CSV captures the discount info.
+     */
+    private String[] currentDiscountStrings() {
+        return new String[]{ discountBadgeLabel.getText(), discountedTotalLabel.getText() };
+    }
+
     // ── CSV helpers ──────────────────────────────────────────────────────────
 
-    /** Creates Projects.csv with the header row if it does not already exist. */
+    /**
+     * Creates Projects.csv with the header row and preset sample projects
+     * if it does not already exist.
+     */
     private void ensureCSVExists() throws IOException {
         File file = new File(CSV_FILE);
+
         if (!file.exists()) {
+            File parent = file.getParentFile();
+            if (parent != null && !parent.exists()) {
+                parent.mkdirs();
+            }
+
             try (PrintWriter pw = new PrintWriter(new FileWriter(file))) {
                 pw.println(CSV_HEADER);
+
+                // ── Preset sample projects ──────────────────────────────────
+                // Each row: Name, Location, L, W, T(in), Emp,
+                //           Area, VolCY, Time, MatCost, LaborCost, Total
+                writePreset(pw, "Small Garage Slab",   "Residential",  20, 20,  4, 2);
+                writePreset(pw, "Backyard Patio",       "Residential",  16, 12,  4, 2);
+                writePreset(pw, "Driveway",             "Residential",  40, 12,  6, 3);
+                writePreset(pw, "Warehouse Floor",      "Commercial",  100, 80,  6, 8);
+                writePreset(pw, "Parking Lot Section",  "Commercial",   60, 40,  5, 5);
+                writePreset(pw, "Loading Dock Apron",   "Industrial",   30, 20,  8, 4);
+                writePreset(pw, "Shop Floor",           "Industrial",   50, 40,  6, 6);
+                writePreset(pw, "Sidewalk Strip",       "Municipal",    80,  5,  4, 2);
+                writePreset(pw, "Pool Deck",            "Residential",  40, 15,  4, 3);
+                writePreset(pw, "Basketball Court",     "Recreational", 84, 50,  4, 6);
+            }
         }
+    }
+
+    /** Calculates derived fields and writes one preset CSV row. */
+    private void writePreset(PrintWriter pw,
+                            String name, String location,
+                            double length, double width,
+                            double thicknessIn, int employees) {
+        double area   = length * width;
+            double vol    = area * (thicknessIn / 12.0);
+            double volCY  = (vol * 1.10) / 27.0;
+            double rebar         = 1.30 * volCY;
+            double mesh          = 0.20 * volCY;
+            double reinforcement = rebar + mesh;
+            double leveling    = 2 * area;
+            double emplTimeEst = (volCY * 3.0) / employees;
+            double pourTime    = (volCY * 5.0) / 60.0;
+            double totTime     = emplTimeEst + pourTime + 1.0;
+            double matCost   = volCY * 130.0;
+            double laborCost = totTime * employees * 21.0;
+            double total     = matCost + laborCost + reinforcement+ leveling;
+
+        // Evaluate discount rules
+        String bestName = "No discount applies";
+        double bestPct  = 0.0;
+        for (Object[] rule : DISCOUNT_RULES) {
+            String ruleName  = (String) rule[0];
+            double threshold = (Double) rule[1];
+            String unit      = (String) rule[2];
+            double pct       = (Double) rule[3];
+            double value;
+            switch (unit) {
+                case "cy":   value = volCY;     break;
+                case "sqft": value = area;      break;
+                case "emp":  value = employees; break;
+                case "in":   value = thicknessIn; break;
+                default:     value = 0;         break;
+            }
+            if (value >= threshold && pct > bestPct) {
+                bestPct  = pct;
+                bestName = ruleName;
+            }
+        }
+        String discLabel;
+        String discTotal;
+        if (bestPct > 0) {
+            double savings = total * (bestPct / 100.0);
+            discLabel = String.format("%s  (--%.0f%%)  saves $%.2f", bestName, bestPct, savings);
+            discTotal = String.format("$%.2f", total - savings);
+        } else {
+            discLabel = bestName;
+            discTotal = "--";
+        }
+
+        pw.printf("\"%s\",\"%s\",%.0f,%.0f,%.0f,%d,%.2f sq ft,%.3f CY,%.2f hrs,$%.2f,$%.2f,$%.2f,\"%s\",%s%n",
+            name, location,
+            length, width, thicknessIn, employees,
+            area, volCY, totTime,
+            matCost, laborCost, total,
+            discLabel, discTotal);
     }
 
     // ── CSV Save ─────────────────────────────────────────────────────────────
@@ -368,10 +694,11 @@ public class ConcretePadEstimator extends JFrame {
         }
 
         try {
-            ensureCSVExists();                          // create file + header if needed
+            ensureCSVExists();
             File csv = new File(CSV_FILE);
+            String[] disc = currentDiscountStrings();
             try (PrintWriter pw = new PrintWriter(new FileWriter(csv, true))) {
-                pw.printf("\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s%n",
+                pw.printf("\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s%n",
                     projectName, location,
                     length, width, thickness, employees,
                     areaLabel.getText(),
@@ -379,12 +706,12 @@ public class ConcretePadEstimator extends JFrame {
                     timeLabel.getText(),
                     matCostLabel.getText(),
                     laborCostLabel.getText(),
-                    totalCostLabel.getText()
+                    totalCostLabel.getText(),
+                    disc[0], disc[1]
                 );
             }
-            JOptionPane.showMessageDialog(this,
-                "Project saved to " + csv.getAbsolutePath(),
-                "Saved", JOptionPane.INFORMATION_MESSAGE);
+            showThemedDialog("Project saved to:\n" + csv.getAbsolutePath(),
+                            "Saved", "info");
 
         } catch (IOException ex) {
             showError("Could not write to Projects.csv:\n" + ex.getMessage());
@@ -394,17 +721,104 @@ public class ConcretePadEstimator extends JFrame {
     // ── CSV Load ─────────────────────────────────────────────────────────────
 
     private void loadProject() {
-        try {
-            ensureCSVExists();                          // create file + header if missing
-        } catch (IOException ex) {
-            showError("Could not create Projects.csv:\n" + ex.getMessage());
+        List<String[]> projects = readAllProjects();
+        if (projects == null) return;
+
+        if (projects.isEmpty()) {
+            showError("No saved projects found in Projects.csv.");
             return;
         }
 
-        File csv = new File(CSV_FILE);
+        String[] labels = buildLabels(projects);
+        int idx = showThemedListDialog("Select a project to load:",
+                                    "Load Project", labels, LOAD_BLUE, "LOAD");
+        if (idx < 0) return;
 
+        String[] row = projects.get(idx);
+        projectNameField.setText(row[0]);
+        locationField.setText(row[1]);
+        lengthField.setText(row[2]);
+        widthField.setText(row[3]);
+        thicknessField.setText(row[4]);
+        employeesField.setText(row[5]);
+        areaLabel.setText(row[6]);
+        volumeCYLabel.setText(row[7]);
+        timeLabel.setText(row[8]);
+        matCostLabel.setText(row[9]);
+        laborCostLabel.setText(row[10]);
+        totalCostLabel.setText(row[11]);
+        // Restore discount fields if present (cols 12 & 13)
+        if (row.length >= 14) {
+            discountBadgeLabel.setText(row[12]);
+            discountedTotalLabel.setText(row[13]);
+        } else {
+            discountBadgeLabel.setText("—");
+            discountedTotalLabel.setText("—");
+        }
+    }
+
+    // ── CSV Delete ────────────────────────────────────────────────────────────
+
+    private void deleteProject() {
+        List<String[]> projects = readAllProjects();
+        if (projects == null) return;
+
+        if (projects.isEmpty()) {
+            showError("No saved projects found to delete.");
+            return;
+        }
+
+        String[] labels = buildLabels(projects);
+        int idx = showThemedListDialog("Select a project to delete:",
+                                    "Delete Project", labels, DEL_RED, "DELETE");
+        if (idx < 0) return;
+
+        String name = projects.get(idx)[0];
+        boolean confirmed = showThemedDialog(
+            "Permanently delete \"" + name + "\"?\nThis cannot be undone.",
+            "Confirm Delete", "confirm");
+        if (!confirmed) return;
+
+        projects.remove(idx);
+
+        // Rewrite the file
+        try {
+            File csv = new File(CSV_FILE);
+            try (PrintWriter pw = new PrintWriter(new FileWriter(csv, false))) {
+                pw.println(CSV_HEADER);
+                for (String[] row : projects) {
+                    StringBuilder sb = new StringBuilder();
+                    for (int i = 0; i < row.length; i++) {
+                        if (i > 0) sb.append(',');
+                        // Re-quote fields that were originally quoted (name and location)
+                        if (i == 0 || i == 1) {
+                            sb.append('"').append(row[i]).append('"');
+                        } else {
+                            sb.append(row[i]);
+                        }
+                    }
+                    pw.println(sb.toString());
+                }
+            }
+            showThemedDialog("\"" + name + "\" has been deleted.", "Deleted", "info");
+        } catch (IOException ex) {
+            showError("Could not update Projects.csv:\n" + ex.getMessage());
+        }
+    }
+
+    // ── Shared CSV read ───────────────────────────────────────────────────────
+
+    /** Reads all project rows. Returns null on I/O error (already shows dialog). */
+    private List<String[]> readAllProjects() {
+        try {
+            ensureCSVExists();
+        } catch (IOException ex) {
+            showError("Could not create Projects.csv:\n" + ex.getMessage());
+            return null;
+        }
+
+        File csv = new File(CSV_FILE);
         List<String[]> projects = new ArrayList<>();
-        List<String>   labels   = new ArrayList<>();
 
         try (BufferedReader br = new BufferedReader(new FileReader(csv))) {
             String line = br.readLine(); // skip header
@@ -413,50 +827,22 @@ public class ConcretePadEstimator extends JFrame {
                 String[] cols = parseCSVLine(line);
                 if (cols.length >= 12) {
                     projects.add(cols);
-                    // Display: "Project Name — Location"
-                    labels.add(cols[0] + (cols[1].isEmpty() ? "" : "  —  " + cols[1]));
                 }
             }
         } catch (IOException ex) {
             showError("Could not read Projects.csv:\n" + ex.getMessage());
-            return;
+            return null;
         }
+        return projects;
+    }
 
-        if (projects.isEmpty()) {
-            showError("No saved projects found in Projects.csv.");
-            return;
+    private String[] buildLabels(List<String[]> projects) {
+        String[] labels = new String[projects.size()];
+        for (int i = 0; i < projects.size(); i++) {
+            String[] p = projects.get(i);
+            labels[i] = p[0] + (p[1].isEmpty() ? "" : "  —  " + p[1]);
         }
-
-        String chosen = (String) JOptionPane.showInputDialog(
-            this,
-            "Select a project to load:",
-            "Load Project",
-            JOptionPane.PLAIN_MESSAGE,
-            null,
-            labels.toArray(),
-            labels.get(0)
-        );
-
-        if (chosen == null) return; // cancelled
-
-        int idx = labels.indexOf(chosen);
-        String[] row = projects.get(idx);
-
-        // Populate inputs
-        projectNameField.setText(row[0]);
-        locationField.setText(row[1]);
-        lengthField.setText(row[2]);
-        widthField.setText(row[3]);
-        thicknessField.setText(row[4]);
-        employeesField.setText(row[5]);
-
-        // Populate results
-        areaLabel.setText(row[6]);
-        volumeCYLabel.setText(row[7]);
-        timeLabel.setText(row[8]);
-        matCostLabel.setText(row[9]);
-        laborCostLabel.setText(row[10]);
-        totalCostLabel.setText(row[11]);
+        return labels;
     }
 
     /** Minimal CSV parser that handles double-quoted fields. */
@@ -492,10 +878,8 @@ public class ConcretePadEstimator extends JFrame {
         matCostLabel.setText("—");
         laborCostLabel.setText("—");
         totalCostLabel.setText("—");
-    }
-
-    private void showError(String msg) {
-        JOptionPane.showMessageDialog(this, msg, "Error", JOptionPane.ERROR_MESSAGE);
+        discountBadgeLabel.setText("—");
+        discountedTotalLabel.setText("—");
     }
 
     // ── Entry point ───────────────────────────────────────────────────────────
