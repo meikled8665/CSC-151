@@ -526,6 +526,7 @@ public class ConcretePadEstimator extends JFrame {
             timeLabel.setText(String.format("%.2f hrs", totTime));
             matCostLabel.setText(String.format("$%.2f", matCost));
             laborCostLabel.setText(String.format("$%.2f", laborCost));
+            reinforcementLabel.setText(String.format("$%.2f", reinforcement));
             totalCostLabel.setText(String.format("$%.2f", total));
 
             // ── Evaluate discount rules; pick highest matching pct ────────────
@@ -707,6 +708,7 @@ public class ConcretePadEstimator extends JFrame {
                     matCostLabel.getText(),
                     laborCostLabel.getText(),
                     totalCostLabel.getText(),
+                    reinforcementLabel.getText(),
                     disc[0], disc[1]
                 );
             }
