@@ -26,10 +26,12 @@ public class ConcretePadEstimator extends JFrame {
     private JLabel discountBadgeLabel;   // e.g. "Large Volume  –15%"
     private JLabel discountedTotalLabel; // final price after discount
     private JLabel reinforcementLabel;
+    private JLabel manpowerLabel;  // Number of employees
+    private JLabel workHoursLabel; // Total work hours
 
     private static final String CSV_FILE = "Projects.csv";
     private static final String CSV_HEADER =
-        "Project Name,Location,Length (ft),Width (ft),Thickness (in),Employees,";
+        "Project Name,Location,Length (ft),Width (ft),Thickness (in),Employees,Area,Volume (CY),Manpower,Work Hours,Material Cost,Labor Cost,Reinforcement,Total Cost,Discount Badge,Discounted Total";
 
     // ── Discount rules (name, threshold, unit, discountPct) ──────────────────
     // Evaluated in order; only the single highest-pct match is applied.
@@ -66,7 +68,7 @@ public class ConcretePadEstimator extends JFrame {
         // ===== HEADER =====
         JPanel header = new JPanel();
         header.setBackground(BG);
-        header.setBorder(new EmptyBorder(18, 20, 8, 20));
+        header.setBorder(new EmptyBorder(10, 28, 8, 28));
 
         JLabel title = new JLabel("CONCRETE COST ESTIMATOR");
         title.setFont(new Font("Arial", Font.BOLD, 18));
@@ -166,6 +168,8 @@ public class ConcretePadEstimator extends JFrame {
 
         areaLabel     = createResultLabel(TEXT_DIM);
         volumeCYLabel = createResultLabel(TEXT_DIM);
+        manpowerLabel = createResultLabel(TEXT_DIM);
+        workHoursLabel = createResultLabel(TEXT_DIM);
         timeLabel     = createResultLabel(TEXT_DIM);
         matCostLabel  = createResultLabel(TEXT_DIM);
         laborCostLabel= createResultLabel(TEXT_DIM);
@@ -176,7 +180,8 @@ public class ConcretePadEstimator extends JFrame {
         outputPanel.add(Box.createVerticalStrut(6));
         addResultRow(outputPanel, "Area:",            areaLabel,      TEXT_DIM, TEXT_LIGHT);
         addResultRow(outputPanel, "Volume (CY+10%):", volumeCYLabel,  TEXT_DIM, TEXT_LIGHT);
-        addResultRow(outputPanel, "Total Time (hr):", timeLabel,      TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Manpower:",        manpowerLabel,  TEXT_DIM, TEXT_LIGHT);
+        addResultRow(outputPanel, "Work Hours:",      workHoursLabel, TEXT_DIM, TEXT_LIGHT);
         addResultRow(outputPanel, "Material Cost:",   matCostLabel,   TEXT_DIM, TEXT_LIGHT);
         addResultRow(outputPanel, "Labor Cost:",      laborCostLabel, TEXT_DIM, TEXT_LIGHT);
         addResultRow(outputPanel, "Reinforcement:",      reinforcementLabel, TEXT_DIM, TEXT_LIGHT);
@@ -242,14 +247,14 @@ public class ConcretePadEstimator extends JFrame {
         JPanel footer = new JPanel();
         footer.setBackground(BG);
         footer.setBorder(new EmptyBorder(3, 0, 8, 0));
-        JLabel note = new JLabel("Material: $125/CY  ·  Labor: $21/hr/employee  ·  +10% volume buffer  ·  Auto-discount: best qualifying rule applied");
+        JLabel note = new JLabel("Material: $130/CY  ·  Labor: $21/hr/employee  ·  Reinforcement + Leveling  ·  +10% volume buffer  ·  Auto-discount applied");
         note.setFont(new Font("Arial", Font.PLAIN, 10));
         note.setForeground(TEXT_DIM);
         footer.add(note);
         add(footer, BorderLayout.SOUTH);
 
         pack();
-        setMinimumSize(new Dimension(600, 400));
+        setMinimumSize(new Dimension(680, 360));
         setLocationRelativeTo(null);
 
         // ── Create CSV with presets immediately on startup ────────────────────
@@ -523,6 +528,8 @@ public class ConcretePadEstimator extends JFrame {
 
             areaLabel.setText(String.format("%.2f sq ft", area));
             volumeCYLabel.setText(String.format("%.3f CY", volCY));
+            manpowerLabel.setText(String.format("%d people", employees));
+            workHoursLabel.setText(String.format("%.2f hrs", totTime));
             timeLabel.setText(String.format("%.2f hrs", totTime));
             matCostLabel.setText(String.format("$%.2f", matCost));
             laborCostLabel.setText(String.format("$%.2f", laborCost));
@@ -622,13 +629,17 @@ public class ConcretePadEstimator extends JFrame {
         double area   = length * width;
             double vol    = area * (thicknessIn / 12.0);
             double volCY  = (vol * 1.10) / 27.0;
+
             double rebar         = 1.30 * volCY;
             double mesh          = 0.20 * volCY;
             double reinforcement = rebar + mesh;
+
+
             double leveling    = 2 * area;
             double emplTimeEst = (volCY * 3.0) / employees;
             double pourTime    = (volCY * 5.0) / 60.0;
             double totTime     = emplTimeEst + pourTime + 1.0;
+
             double matCost   = volCY * 130.0;
             double laborCost = totTime * employees * 21.0;
             double total     = matCost + laborCost + reinforcement+ leveling;
@@ -665,11 +676,11 @@ public class ConcretePadEstimator extends JFrame {
             discTotal = "--";
         }
 
-        pw.printf("\"%s\",\"%s\",%.0f,%.0f,%.0f,%d,%.2f sq ft,%.3f CY,%.2f hrs,$%.2f,$%.2f,$%.2f,\"%s\",%s%n",
+        pw.printf("\"%s\",\"%s\",%.0f,%.0f,%.0f,%d,%.2f sq ft,%.3f CY,%d,%.2f hrs,$%.2f,$%.2f,$%.2f,$%.2f,\"%s\",%s%n",
             name, location,
             length, width, thicknessIn, employees,
-            area, volCY, totTime,
-            matCost, laborCost, total,
+            area, volCY, employees, totTime,
+            matCost, laborCost, reinforcement, total,
             discLabel, discTotal);
     }
 
@@ -699,16 +710,17 @@ public class ConcretePadEstimator extends JFrame {
             File csv = new File(CSV_FILE);
             String[] disc = currentDiscountStrings();
             try (PrintWriter pw = new PrintWriter(new FileWriter(csv, true))) {
-                pw.printf("\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s%n",
+                pw.printf("\"%s\",\"%s\",%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,\"%s\",%s%n",
                     projectName, location,
                     length, width, thickness, employees,
                     areaLabel.getText(),
                     volumeCYLabel.getText(),
-                    timeLabel.getText(),
+                    manpowerLabel.getText(),
+                    workHoursLabel.getText(),
                     matCostLabel.getText(),
                     laborCostLabel.getText(),
-                    totalCostLabel.getText(),
                     reinforcementLabel.getText(),
+                    totalCostLabel.getText(),
                     disc[0], disc[1]
                 );
             }
@@ -745,17 +757,40 @@ public class ConcretePadEstimator extends JFrame {
         employeesField.setText(row[5]);
         areaLabel.setText(row[6]);
         volumeCYLabel.setText(row[7]);
-        timeLabel.setText(row[8]);
-        matCostLabel.setText(row[9]);
-        laborCostLabel.setText(row[10]);
-        totalCostLabel.setText(row[11]);
-        // Restore discount fields if present (cols 12 & 13)
-        if (row.length >= 14) {
-            discountBadgeLabel.setText(row[12]);
-            discountedTotalLabel.setText(row[13]);
+        manpowerLabel.setText(row[8]);
+        workHoursLabel.setText(row[9]);
+        matCostLabel.setText(row[10]);
+        laborCostLabel.setText(row[11]);
+        
+        // Determine if this is old format (no manpower/hours cols) or new format
+        // Old: cols 0-7 are data, 8 is time/total info
+        // New: cols 0-11 are data, 12 is reinforcement, 13 is total, 14-15 are discount
+        if (row.length >= 16) {
+            // New format with manpower and work hours columns
+            reinforcementLabel.setText(row[12]);
+            totalCostLabel.setText(row[13]);
+            discountBadgeLabel.setText(row[14]);
+            discountedTotalLabel.setText(row[15]);
         } else {
-            discountBadgeLabel.setText("—");
-            discountedTotalLabel.setText("—");
+            // Old format - read total at end
+            reinforcementLabel.setText(row.length > 11 ? row[11] : "—");
+            totalCostLabel.setText(row.length > 12 ? row[12] : "—");
+            discountBadgeLabel.setText(row.length > 13 ? row[13] : "—");
+            discountedTotalLabel.setText(row.length > 14 ? row[14] : "—");
+            // Calculate reinforcement from the loaded data
+            calculateReinforcementFromLoaded();
+        }
+    }
+    
+    private void calculateReinforcementFromLoaded() {
+        try {
+            double volCY = Double.parseDouble(volumeCYLabel.getText().replace(" CY", "").trim());
+            double rebar = 1.30 * volCY;
+            double mesh = 0.20 * volCY;
+            double reinforcement = rebar + mesh;
+            reinforcementLabel.setText(String.format("$%.2f", reinforcement));
+        } catch (Exception e) {
+            reinforcementLabel.setText("—");
         }
     }
 
@@ -876,9 +911,12 @@ public class ConcretePadEstimator extends JFrame {
         employeesField.setText("");
         areaLabel.setText("—");
         volumeCYLabel.setText("—");
+        manpowerLabel.setText("—");
+        workHoursLabel.setText("—");
         timeLabel.setText("—");
         matCostLabel.setText("—");
         laborCostLabel.setText("—");
+        reinforcementLabel.setText("—");
         totalCostLabel.setText("—");
         discountBadgeLabel.setText("—");
         discountedTotalLabel.setText("—");
