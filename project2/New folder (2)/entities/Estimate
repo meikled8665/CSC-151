@@ -1,0 +1,111 @@
+{
+  "name": "Estimate",
+  "type": "object",
+  "properties": {
+    "project_name": {
+      "type": "string",
+      "description": "Name of the project"
+    },
+    "location": {
+      "type": "string",
+      "description": "Project location"
+    },
+    "client_name": {
+      "type": "string",
+      "description": "Client name"
+    },
+    "slab_type": {
+      "type": "string",
+      "enum": [
+        "residential_pad",
+        "driveway",
+        "warehouse_slab",
+        "commercial_floor",
+        "sidewalk",
+        "custom"
+      ],
+      "default": "residential_pad"
+    },
+    "length_ft": {
+      "type": "number",
+      "description": "Length in feet"
+    },
+    "width_ft": {
+      "type": "number",
+      "description": "Width in feet"
+    },
+    "thickness_in": {
+      "type": "number",
+      "description": "Thickness in inches"
+    },
+    "waste_percent": {
+      "type": "number",
+      "default": 10,
+      "description": "Waste percentage"
+    },
+    "concrete_price_per_yard": {
+      "type": "number",
+      "description": "Price per cubic yard of concrete"
+    },
+    "num_employees": {
+      "type": "number",
+      "description": "Number of employees"
+    },
+    "labor_hours": {
+      "type": "number",
+      "description": "Total labor hours"
+    },
+    "labor_rate_per_hour": {
+      "type": "number",
+      "description": "Labor rate per hour per employee"
+    },
+    "discount_type": {
+      "type": "string",
+      "enum": [
+        "none",
+        "percentage",
+        "fixed"
+      ],
+      "default": "none"
+    },
+    "discount_value": {
+      "type": "number",
+      "default": 0
+    },
+    "total_area_sqft": {
+      "type": "number"
+    },
+    "concrete_volume_yards": {
+      "type": "number"
+    },
+    "concrete_cost": {
+      "type": "number"
+    },
+    "labor_cost": {
+      "type": "number"
+    },
+    "subtotal": {
+      "type": "number"
+    },
+    "discount_amount": {
+      "type": "number"
+    },
+    "total_cost": {
+      "type": "number"
+    },
+    "notes": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "draft",
+        "finalized"
+      ],
+      "default": "draft"
+    }
+  },
+  "required": [
+    "project_name"
+  ]
+}
